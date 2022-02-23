@@ -1,6 +1,15 @@
-func fn(): u8
+if (x)
 {
-	var a = 5;
-	var b = 6;
-	return a + b;
+	a();
+}
+else
+{
+	if (y)
+	{
+		b();
+	}
+	else
+	{
+		c();
+	}
 }

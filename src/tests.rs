@@ -14,7 +14,7 @@ fn check_parse(file: &str)
 
     match td5::statement(src.as_str())
     {
-        Ok(r) => println!("{:?}", r),
+        Ok(r) => println!("{:?}\n{}", r, r),
         Err(e) =>
             {
                 println!("{:?}", e);
