@@ -131,10 +131,10 @@ parser! {
             / rel_expr()
 
         rule rel_op() -> BinOpRel
-            = "<" { BinOpRel::Lt }
-            / "<=" { BinOpRel::Le }
-            / ">" { BinOpRel::Gt }
+            = "<=" { BinOpRel::Le }
+            / "<" { BinOpRel::Lt }
             / ">=" { BinOpRel::Ge }
+            / ">" { BinOpRel::Gt }
 
         #[cache_left_rec]
         rule rel_expr() -> Expr
@@ -174,7 +174,7 @@ parser! {
             / "&" { UnOp::Ref }
             / "++" { UnOp::PreInc }
             / "--" { UnOp::PreDec }
-            / "-(" { UnOp::Neg }
+            / "-" { UnOp::Neg }
 
         rule unary_expr() -> Expr
             = o:unary_op() _ e:unary_expr() { Expr::UnOp(o, Box::new(e)) }
