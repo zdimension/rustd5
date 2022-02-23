@@ -4,7 +4,7 @@ mod pegparser;
 mod tests;
 mod reverse;
 
-use pegparser::td5;
+use ast::td5;
 
 fn main()
 {

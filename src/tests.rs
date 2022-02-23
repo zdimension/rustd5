@@ -5,7 +5,7 @@ use std::fs;
 use std::path::Path;
 use test_generator::test_resources;
 
-use crate::pegparser::td5;
+use crate::ast::td5;
 
 #[test_resources("examples/*.td5")]
 fn check_parse(file: &str)
