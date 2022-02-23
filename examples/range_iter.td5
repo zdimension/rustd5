@@ -1,0 +1,20 @@
+{
+	type square<T> = struct { iterator: T* global; };
+
+	impl square
+	{
+		func `(`(iterator: T*): self { return self { iterator: iterator }; }
+
+		func hasNext(sq: self*): bool { return sq.iterator.hasNext(); }
+
+		func next(sq: self*): u16 { var item = sq.iterator.next(); return item * item; }
+	}
+
+	var x = range(1, 10);
+
+	for (var n in square!<range>(&x))
+	{
+		disp!<u16>(n);
+		putc(',');
+	}
+}

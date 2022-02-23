@@ -1,0 +1,15 @@
+{
+	type square = struct { };
+	impl square
+	{
+		func `(`(x: u16): u16 { return x * x; }
+	}
+
+	var x = range(1, 10);
+
+	for (var n in map!<range, square>(&x))
+	{
+		disp!<u16>(n);
+		putc(',');
+	}
+}

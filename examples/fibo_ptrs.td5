@@ -1,0 +1,14 @@
+{
+    var i = 9;
+
+    var arr[10];
+    arr[0] = 0;
+    arr[1] = 1;
+    var ptr = &arr[2];
+    for (; i-- >= 2; ptr++)
+    {
+        *ptr = *(ptr - 1) + *(ptr - 2);
+    }
+
+    print arr[9];
+}
