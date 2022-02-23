@@ -40,7 +40,6 @@ pub enum Stmt
     TupleAssign { names: Vec<String>, values: Vec<Expr> },
     ConstDecl { name: String, value: Box<Expr> },
     Print(Box<Expr>),
-    Read(Box<Expr>),
     Return(Option<Box<Expr>>),
     Assert(Box<Expr>),
     Break(Option<Box<Expr>>),
@@ -98,20 +97,19 @@ impl Display for Stmt
                 Stmt::VarDeclList(decls) => format!("{};", decls),
                 Stmt::TypeDeclList(decls) => format!("type {};", decls.iter().map(|decl| decl.to_string()).join(", ")),
                 Stmt::TupleAssign { names, values } => format!("({}) = ({});", names.iter().join(", "), values.iter().map(|expr| expr.to_string()).join(", ")),
-                Stmt::ConstDecl { name, value } => format!("const {} = {};", name, value.to_string()),
-                Stmt::Print(expr) => format!("print {};", expr.to_string()),
-                Stmt::Read(expr) => format!("read {};", expr.to_string()),
+                Stmt::ConstDecl { name, value } => format!("const {} = {};", name, value),
+                Stmt::Print(expr) => format!("print {};", expr),
                 Stmt::Return(None) => String::from("return;"),
-                Stmt::Return(Some(expr)) => format!("return {};", expr.to_string()),
-                Stmt::Assert(expr) => format!("assert {};", expr.to_string()),
+                Stmt::Return(Some(expr)) => format!("return {};", expr),
+                Stmt::Assert(expr) => format!("assert {};", expr),
                 Stmt::Break(None) => String::from("break;"),
-                Stmt::Break(Some(expr)) => format!("break {};", expr.to_string()),
+                Stmt::Break(Some(expr)) => format!("break {};", expr),
                 Stmt::Continue => String::from("continue;"),
-                Stmt::While { condition, code } => format!("while ({})\n{}{}", condition.to_string(), tab, stringify(code, indent + 1, true)),
+                Stmt::While { condition, code } => format!("while ({})\n{}{}", condition, tab, stringify(code, indent + 1, true)),
                 Stmt::Loop { code } => format!("loop\n{}{}", tab, stringify(code, indent + 1, true)),
                 Stmt::For { init, condition, step, code } => format!("for ({}; {}; {})\n{}{}", to_string_if_some(init), to_string_if_some(condition), to_string_if_some(step), tab, stringify(code, indent + 1, true)),
-                Stmt::ForEach { variable, iterable, code } => format!("for {} in {}\n{}{}", variable, iterable.to_string(), tab, stringify(code, indent + 1, true)),
-                Stmt::If { condition, code, code_else } => format!("if ({})\n{}{}{}", condition.to_string(), tab, stringify(code, indent + 1, true), match code_else
+                Stmt::ForEach { variable, iterable, code } => format!("for {} in {}\n{}{}", variable, iterable, tab, stringify(code, indent + 1, true)),
+                Stmt::If { condition, code, code_else } => format!("if ({})\n{}{}{}", condition, tab, stringify(code, indent + 1, true), match code_else
                 {
                     None => String::new(),
                     Some(code) => format!("\n{}else\n{}{}", tab, tab, stringify(code, indent + 1, true)),
@@ -188,11 +186,11 @@ impl Display for VarDecl
                 {
                     if let Some(scalar_type) = scalar_type
                     {
-                        write!(f, ": {}", scalar_type.to_string())?;
+                        write!(f, ": {}", scalar_type)?;
                     }
                     if let Some(scalar_value) = scalar_value
                     {
-                        write!(f, " = {}", scalar_value.to_string())?;
+                        write!(f, " = {}", scalar_value)?;
                     }
                 }
             VarDeclType::Array(array_size, array_init) =>
@@ -228,7 +226,7 @@ impl Display for TypeDecl
         {
             write!(f, "<{}>", generic_info.type_params.join(", "))?;
         }
-        write!(f, " = {}", self.type_spec.to_string())
+        write!(f, " = {}", self.type_spec)
     }
 }
 
@@ -246,7 +244,7 @@ impl Display for FnDecl
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum TypeSpec
 {
-    NamedTypeSpec(String),
+    Named(String),
     SelfType,
     GenericInstanciation(String, Vec<TypeSpec>),
     Pointer(Box<TypeSpec>),
@@ -424,7 +422,7 @@ pub enum Expr
     StructLiteral(Box<TypeSpec>, Vec<Expr>),
     StructLiteralNamed(Box<TypeSpec>, Vec<StructLiteralNamedField>),
     BinOp(Box<Expr>, BinOp, Box<Expr>),
-    IsExpr(Box<Expr>, Box<Pattern>),
+    Is(Box<Expr>, Box<Pattern>),
     UnOp(UnOp, Box<Expr>),
     Call(Box<Expr>, Vec<Expr>),
     Type(Box<TypeSpec>),
@@ -437,7 +435,7 @@ impl Display for TypeSpec
     {
         match self
         {
-            TypeSpec::NamedTypeSpec(name) => write!(f, "{}", name),
+            TypeSpec::Named(name) => write!(f, "{}", name),
             TypeSpec::Pointer(inner) => write!(f, "*{}", inner),
             TypeSpec::Global(inner) => write!(f, "{} global", inner),
             TypeSpec::Array(inner, size) => write!(f, "{}[{}]", inner, size),
@@ -479,14 +477,14 @@ impl Display for Expr
             Expr::BitsOf(t) => write!(f, "bitsof({})", t),
             Expr::New(t) => write!(f, "new {}", t),
             Expr::Ident(name) => write!(f, "{}", name),
-            Expr::Compound(stmts, expr) => write!(f, "{}{}", stmts.iter().map(|s| format!("{}", s)).collect::<Vec<String>>().join("; "), expr),
+            Expr::Compound(stmts, expr) => write!(f, "{{ {} {} }}", stmts.iter().map(|s| format!("{}", s)).collect::<Vec<String>>().join(""), expr),
             Expr::If(cond, then, els) => write!(f, "if ({}) t {} else {}", cond, then, els),
-            Expr::Loop(body) => write!(f, "loop {}", body),
+            Expr::Loop(body) => write!(f, "loop {}", body), // TODO: incorrect indentation
             Expr::Match(expr, arms) => write!(f, "match {} {{ {} }}", expr, arms.iter().map(|a| format!("{} => {}", a.0, a.1)).collect::<Vec<String>>().join(", ")),
             Expr::StructLiteral(name, fields) => write!(f, "{} {{ {} }}", name, fields.iter().map(Expr::to_string).collect::<Vec<String>>().join(", ")),
             Expr::StructLiteralNamed(name, fields) => write!(f, "{} {{ {} }}", name, fields.iter().map(|f| format!("{}: {}", f.0, f.1)).collect::<Vec<String>>().join(", ")),
             Expr::BinOp(lhs, op, rhs) => write!(f, "({} {} {})", lhs, op, rhs),
-            Expr::IsExpr(lhs, rhs) => write!(f, "({} is {})", lhs, rhs),
+            Expr::Is(lhs, rhs) => write!(f, "({} is {})", lhs, rhs),
             Expr::UnOp(op, expr) => match op.get_position()
             {
                 UnOpPosition::Prefix => write!(f, "({}{})", op, expr),
@@ -558,7 +556,7 @@ parser! {
         rule type_spec_named() -> TypeSpec
             = "self" { TypeSpec::SelfType }
             / generic_instanciation()
-            / i:ident() { TypeSpec::NamedTypeSpec(i.to_string()) }
+            / i:ident() { TypeSpec::Named(i.to_string()) }
 
         #[cache_left_rec]
         rule type_spec() -> TypeSpec
@@ -609,7 +607,7 @@ parser! {
 
         #[cache_left_rec]
         rule is_expr() -> Expr
-            = l:is_expr() _ "is" _ r:pattern() { Expr::IsExpr(Box::new(l), Box::new(r)) }
+            = l:is_expr() _ "is" _ r:pattern() { Expr::Is(Box::new(l), Box::new(r)) }
             / pipe_expr()
 
         #[cache_left_rec]
@@ -691,8 +689,9 @@ parser! {
             / "bitsof" _ "(" _ t:type_spec() _ ")" { Expr::BitsOf(Box::new(t)) }
             / "new" _ "(" _ t:type_spec() _ ")" { Expr::New(Box::new(t)) }
             / "(" _ e:expr() _ ")" { e }
+            / "{" _ s:(statement() ** _) _ e:expr() _ "}" { Expr::Compound(s, Box::new(e)) }
             / "if" _ "(" _ e1:expr() _ ")" _ "{" _ s1:expr() _ "}" _ "else" _ "{" _ s2:expr() _ "}" { Expr::If(Box::new(e1), Box::new(s1), Box::new(s2)) }
-            / "loop" _ "{" _ s:statement() _ "}" { Expr::Loop(Box::new(s)) }
+            / "loop" _ s:statement() { Expr::Loop(Box::new(s)) }
             / "match" _ "(" _ e:expr() _ ")" _ "{" _ arms:(match_arm() ** comma()) _ "}" { Expr::Match(Box::new(e), arms) }
             / t:type_spec_named() _ "{" _ fields:(expr() ** comma()) _ "}" { Expr::StructLiteral(Box::new(t), fields) }
             / t:type_spec_named() _ "{" _ fields:(named_literal_field() ** comma()) _ "}" { Expr::StructLiteralNamed(Box::new(t), fields) }
@@ -734,6 +733,7 @@ parser! {
 
         rule statement_inner() -> Stmt
             = ";" { Stmt::Empty }
+            / "(" _ v:(ident() ++ comma()) _ ")" _ "=" _ "(" _ e:(expr() ++ comma()) _ ")" _ ";" { Stmt::TupleAssign { names: v, values: e } }
             / f:func_decl() { Stmt::FnDecl(Box::new(f)) }
             / "impl" _ i:ident() _ "{" _ f:(func_decl() ** _) _ "}" { Stmt::Impl { type_name: i.to_string(), methods: f } }
             / "if" _ "(" _ c:expr() _ ")" s:statement() !"else" { Stmt::If { condition: Box::new(c), code: Box::new(s), code_else: None } }
@@ -746,9 +746,9 @@ parser! {
             / "break" _ e:expr()? semi() { Stmt::Break(e.map(Box::new)) }
             / "assert" _ e:expr() semi() { Stmt::Assert(Box::new(e)) }
             / "print" _ e:expr() semi() { Stmt::Print(Box::new(e)) }
-            / "read" _ e:expr() semi() { Stmt::Read(Box::new(e)) }
             / "continue" semi() { Stmt::Continue }
             / "while" _ "(" _ e:expr() _ ")" _ s:statement() { Stmt::While { condition:Box::new(e), code: Box::new(s) } }
+            / "do" _ s:statement() _ "while" _ "(" _ e:expr() _ ")" semi() { Stmt::DoWhile { condition:Box::new(e), code: Box::new(s) } }
             / "loop" _ s:statement() { Stmt::Loop { code: Box::new(s) } }
             / "for" _ "(" _ "var" _ i:ident() _ "in" _ e:expr() _ ")" _ s:statement() { Stmt::ForEach { variable: i.to_string(), iterable: Box::new(e), code: Box::new(s) } }
             / "for" _ "(" _ e1:decl_or_expr()? semi() _ e2:expr()? semi() _ e3:expr()? _ ")" _ s:statement() { Stmt::For{init:e1, condition: e2.map(Box::new), step:e3.map(Box::new), code:Box::new(s)} }
