@@ -3,6 +3,11 @@
 
 	var p = point { x: 7, y: 2 };
 
+	if (p is point { x: 0..5, y: 0..5 })
+	{
+		print 1;
+	}
+
 	disp(match (p)
 	{
 		point { x: 0..5, y: 0..5 } => 1,

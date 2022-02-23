@@ -428,6 +428,7 @@ pub enum Expr
     UnOp(UnOp, Box<Expr>),
     Call(Box<Expr>, Vec<Expr>),
     Type(Box<TypeSpec>),
+    Pattern(Box<Pattern>)
 }
 
 impl Display for TypeSpec
@@ -481,7 +482,7 @@ impl Display for Expr
             Expr::Compound(stmts, expr) => write!(f, "{}{}", stmts.iter().map(|s| format!("{}", s)).collect::<Vec<String>>().join("; "), expr),
             Expr::If(cond, then, els) => write!(f, "if ({}) t {} else {}", cond, then, els),
             Expr::Loop(body) => write!(f, "loop {}", body),
-            Expr::Match(expr, arms) => write!(f, "match {} {{ {} }}", expr, arms.iter().map(|a| format!("{} => {}", a.0, a.1)).collect::<Vec<String>>().join("; ")),
+            Expr::Match(expr, arms) => write!(f, "match {} {{ {} }}", expr, arms.iter().map(|a| format!("{} => {}", a.0, a.1)).collect::<Vec<String>>().join(", ")),
             Expr::StructLiteral(name, fields) => write!(f, "{} {{ {} }}", name, fields.iter().map(Expr::to_string).collect::<Vec<String>>().join(", ")),
             Expr::StructLiteralNamed(name, fields) => write!(f, "{} {{ {} }}", name, fields.iter().map(|f| format!("{}: {}", f.0, f.1)).collect::<Vec<String>>().join(", ")),
             Expr::BinOp(lhs, op, rhs) => write!(f, "({} {} {})", lhs, op, rhs),
@@ -493,6 +494,7 @@ impl Display for Expr
             },
             Expr::Call(name, args) => write!(f, "{}({})", name, args.iter().map(|a| a.to_string()).collect::<Vec<String>>().join(", ")),
             Expr::Type(t) => write!(f, "{}", t),
+            Expr::Pattern(p) => write!(f, "{}", p),
         }
     }
 }
@@ -580,13 +582,22 @@ parser! {
         rule var() -> Expr
             = i:ident() { Expr::Ident(i) }
 
+        rule pattern_expr() -> Expr
+            = p:pattern() { Expr::Pattern(Box::new(p)) }
+
+        rule named_literal_field_pattern() -> StructLiteralNamedField
+            = m:ident() _ ":" _ e:pattern_expr() { StructLiteralNamedField(m, Box::new(e)) }
+
         rule pattern_basic() -> Pattern
-            = e:l_and_expr() { Pattern::Value(Box::new(e)) }
-            / l:l_and_expr() _ ".." _ r:l_and_expr() { Pattern::Range(Box::new(l), Box::new(r)) }
+            = t:type_spec_named() _ "{" _ fields:(pattern_expr() ** comma()) _ "}" { Pattern::Value(Box::new(Expr::StructLiteral(Box::new(t), fields))) }
+            / t:type_spec_named() _ "{" _ fields:(named_literal_field_pattern() ** comma()) _ "}" { Pattern::Value(Box::new(Expr::StructLiteralNamed(Box::new(t), fields))) }
             / l:l_and_expr() _ "..=" _ r:l_and_expr() { Pattern::RangeInclusive(Box::new(l), Box::new(r)) }
+            / l:l_and_expr() _ ".." _ r:l_and_expr() { Pattern::Range(Box::new(l), Box::new(r)) }
+            / e:l_and_expr() { Pattern::Value(Box::new(e)) }
 
         rule pattern() -> Pattern
-            = p:(pattern_basic() ** (_ "|" _)) { Pattern::Or(p) }
+            = "_" { Pattern::Wildcard }
+            / p:(pattern_basic() ** (_ "|" _)) { Pattern::Or(p) }
 
         rule assign_expr() -> Expr
             = l:unary_expr() _ "=" _ r:assign_expr() { Expr::BinOp(Box::new(l), BinOp::Assign(None), Box::new(r)) }
