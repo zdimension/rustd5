@@ -9,11 +9,33 @@ use itertools::Itertools;
 use peg::parser;
 
 #[derive(Clone, PartialEq, Eq, Debug)]
+pub struct VarDeclStmt(Vec<VarDecl>);
+
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum DeclOrExpr
+{
+    Decl(Box<VarDeclStmt>),
+    Expr(Box<Expr>)
+}
+
+impl Display for DeclOrExpr
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        match self
+        {
+            DeclOrExpr::Decl(decl) => write!(f, "{}", decl),
+            DeclOrExpr::Expr(expr) => write!(f, "{}", expr)
+        }
+    }
+}
+
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub enum Stmt
 {
     Empty,
     Discard(Box<Expr>),
-    VarDeclList(Vec<VarDecl>),
+    VarDeclList(VarDeclStmt),
     TypeDeclList(Vec<TypeDecl>),
     TupleAssign { names: Vec<String>, values: Vec<Expr> },
     ConstDecl { name: String, value: Box<Expr> },
@@ -25,13 +47,31 @@ pub enum Stmt
     Continue,
     While { condition: Box<Expr>, code: Box<Stmt> },
     Loop { code: Box<Stmt> },
-    For { init: Option<Box<Stmt>>, condition: Option<Box<Expr>>, step: Option<Box<Expr>>, code: Box<Stmt> },
+    For { init: Option<DeclOrExpr>, condition: Option<Box<Expr>>, step: Option<Box<Expr>>, code: Box<Stmt> },
     ForEach { variable: String, iterable: Box<Expr>, code: Box<Stmt> },
     If { condition: Box<Expr>, code: Box<Stmt>, code_else: Option<Box<Stmt>> },
     DoWhile { code: Box<Stmt>, condition: Box<Expr> },
     Impl { type_name: String, methods: Vec<FnDecl> },
     FnDecl(Box<FnDecl>),
     Block(Vec<Stmt>),
+}
+
+fn to_string_if_some<T>(x: &Option<T>) -> String
+where
+    T: Display,
+{
+    match x {
+        Some(x) => format!("{}", x),
+        None => String::new(),
+    }
+}
+
+impl Display for VarDeclStmt
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        write!(f, "var {}", self.0.iter().map(|decl| decl.to_string()).join(", "))
+    }
 }
 
 impl Display for Stmt
@@ -42,19 +82,20 @@ impl Display for Stmt
         {
             let mut tab = String::new();
             for _ in 0..indent {
-                tab.push_str("\t");
+                tab.push('\t');
             }
             tab
         }
 
         fn stringify(s: &Stmt, indent: i32, expect_block: bool) -> String
         {
-            let mut tab = gen_tab(indent);
+            let (indent, prefix) = if expect_block && matches!(s, Stmt::Block(_)) { (indent - 1, "") } else { (indent, "\t") };
+            let tab = gen_tab(indent);
             let line = match s
             {
                 Stmt::Empty => String::from(";"),
                 Stmt::Discard(expr) => format!("{};", expr),
-                Stmt::VarDeclList(decls) => format!("var {};", decls.iter().map(|decl| decl.to_string()).join(", ")),
+                Stmt::VarDeclList(decls) => format!("{};", decls),
                 Stmt::TypeDeclList(decls) => format!("type {};", decls.iter().map(|decl| decl.to_string()).join(", ")),
                 Stmt::TupleAssign { names, values } => format!("({}) = ({});", names.iter().join(", "), values.iter().map(|expr| expr.to_string()).join(", ")),
                 Stmt::ConstDecl { name, value } => format!("const {} = {};", name, value.to_string()),
@@ -66,22 +107,21 @@ impl Display for Stmt
                 Stmt::Break(None) => String::from("break;"),
                 Stmt::Break(Some(expr)) => format!("break {};", expr.to_string()),
                 Stmt::Continue => String::from("continue;"),
-                Stmt::While { condition, code } => format!("while ({})\n{}", condition.to_string(), stringify(code, indent + 1, true)),
-                Stmt::Loop { code } => format!("loop\n{}", stringify(code, indent + 1, true)),
-                Stmt::For { init, condition, step, code } => format!("for ()\n{}", stringify(code, indent + 1, true)),
-                Stmt::ForEach { variable, iterable, code } => format!("for {} in {} {}", variable, iterable.to_string(), stringify(code, indent + 1, true)),
-                Stmt::If { condition, code, code_else } => format!("if ({}) {}\n{}", condition.to_string(), stringify(code, indent + 1, true), match code_else
+                Stmt::While { condition, code } => format!("while ({})\n{}{}", condition.to_string(), tab, stringify(code, indent + 1, true)),
+                Stmt::Loop { code } => format!("loop\n{}{}", tab, stringify(code, indent + 1, true)),
+                Stmt::For { init, condition, step, code } => format!("for ({}; {}; {})\n{}{}", to_string_if_some(init), to_string_if_some(condition), to_string_if_some(step), tab, stringify(code, indent + 1, true)),
+                Stmt::ForEach { variable, iterable, code } => format!("for {} in {}\n{}{}", variable, iterable.to_string(), tab, stringify(code, indent + 1, true)),
+                Stmt::If { condition, code, code_else } => format!("if ({})\n{}{}{}", condition.to_string(), tab, stringify(code, indent + 1, true), match code_else
                 {
                     None => String::new(),
-                    Some(code) => format!("{}else {}", tab, stringify(code, indent + 1, true)),
+                    Some(code) => format!("\n{}else\n{}{}", tab, tab, stringify(code, indent + 1, true)),
                 }),
-                Stmt::DoWhile { code, condition } => format!("do\n{}while ({});", stringify(code, indent + 1, true), condition.to_string()),
-                Stmt::Impl { type_name, methods } => format!("impl {}\n{}", type_name, methods.iter().map(|method| method.to_string()).join("\n")),
-                Stmt::FnDecl(decl) => format!("{}", decl.to_string()),
-                Stmt::Block(stmts) => return format!("{{\n{}\n{}}}", stmts.iter().map(|stmt| format!("{}{}", tab, stringify(stmt, indent, true))).join("\n"), gen_tab(indent - 1)),
+                Stmt::DoWhile { code, condition } => format!("do\n{}{}\n{}while ({});", tab, stringify(code, indent + 1, true), tab, condition),
+                Stmt::Impl { type_name, methods } => format!("impl {}\n{}{{\n{}\t{}\n{}}}", type_name, tab, tab, methods.iter().map(|method| method.to_string()).join("\n").replace("\n", &*format!("\n{}\t", tab)), tab),
+                Stmt::FnDecl(decl) => decl.to_string().replace("\n", &*format!("\n{}", tab)),
+                Stmt::Block(stmts) => return format!("{{\n{}\n{}}}", stmts.iter().map(|stmt| format!("{}{}", tab, stringify(stmt, indent + 1, true))).join("\n"), tab),
             };
-            line
-            //format!("{}{}", tab, line)
+            format!("{}{}", prefix, line)
         }
         write!(f, "{}", stringify(self, 0, false))
     }
@@ -671,12 +711,12 @@ parser! {
         rule block() -> Stmt
             = _ "{" _ s:(statement() ** _) _ "}" _ { Stmt::Block(s) }
 
-        rule var_decl_stmt() -> Stmt
-            = "var" _ vars:(var_decl() ** comma()) { Stmt::VarDeclList(vars) }
+        rule var_decl_stmt() -> VarDeclStmt
+            = "var" _ vars:(var_decl() ** comma()) { VarDeclStmt(vars) }
 
-        rule decl_or_expr() -> Stmt
-            = var_decl_stmt()
-            / e:expr() { Stmt::Discard(Box::new(e)) }
+        rule decl_or_expr() -> DeclOrExpr
+            = v:var_decl_stmt() { DeclOrExpr::Decl(Box::new(v)) }
+            / e:expr() { DeclOrExpr::Expr(Box::new(e)) }
 
         pub rule statement() -> Stmt
             = _ s:statement_inner() _ { s }
@@ -688,7 +728,7 @@ parser! {
             / "if" _ "(" _ c:expr() _ ")" s:statement() !"else" { Stmt::If { condition: Box::new(c), code: Box::new(s), code_else: None } }
             / "if" _ "(" _ c:expr() _ ")" s:statement() "else" e:statement() { Stmt::If { condition: Box::new(c), code: Box::new(s), code_else: Some(Box::new(e)) } }
             / "const" _ i:ident() _ "=" _ e:expr() semi() { Stmt::ConstDecl { name: i.to_string(), value: Box::new(e) } }
-            / s:var_decl_stmt() semi() { s }
+            / s:var_decl_stmt() semi() { Stmt::VarDeclList(s) }
             / "type" _ types:(type_decl() ** comma()) semi() { Stmt::TypeDeclList(types) }
             / block()
             / "return" _ e:expr()? semi() { Stmt::Return(e.map(Box::new)) }
@@ -700,7 +740,7 @@ parser! {
             / "while" _ "(" _ e:expr() _ ")" _ s:statement() { Stmt::While { condition:Box::new(e), code: Box::new(s) } }
             / "loop" _ s:statement() { Stmt::Loop { code: Box::new(s) } }
             / "for" _ "(" _ "var" _ i:ident() _ "in" _ e:expr() _ ")" _ s:statement() { Stmt::ForEach { variable: i.to_string(), iterable: Box::new(e), code: Box::new(s) } }
-            / "for" _ "(" _ e1:decl_or_expr()? semi() _ e2:expr()? semi() _ e3:expr()? _ ")" _ s:statement() { Stmt::For{init:e1.map(Box::new), condition: e2.map(Box::new), step:e3.map(Box::new), code:Box::new(s)} }
+            / "for" _ "(" _ e1:decl_or_expr()? semi() _ e2:expr()? semi() _ e3:expr()? _ ")" _ s:statement() { Stmt::For{init:e1, condition: e2.map(Box::new), step:e3.map(Box::new), code:Box::new(s)} }
             / e:expr() semi() { Stmt::Discard(Box::new(e)) }
 
     }
