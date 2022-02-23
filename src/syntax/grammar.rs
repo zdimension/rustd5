@@ -55,9 +55,9 @@ parser! {
         rule type_spec() -> TypeSpec
             = t:type_spec() _ "*" { TypeSpec::Pointer(Box::new(t)) }
             / t:type_spec() _ "global" { TypeSpec::Global(Box::new(t)) }
-            / t:type_spec() _ "[" _ e:expr() _ "]" { TypeSpec::Array(Box::new(t), Box::new(e)) }
-            / "typeof" _ "(" _ e:expr() _ ")" { TypeSpec::TypeOf(Box::new(e)) }
-            / "scalarof" _ "(" _ e:expr() _ ")" { TypeSpec::ScalarOf(Box::new(e)) }
+            / t:type_spec() _ "[" _ e:expr_box() _ "]" { TypeSpec::Array(Box::new(t), e) }
+            / "typeof" _ "(" _ e:expr_box() _ ")" { TypeSpec::TypeOf(e) }
+            / "scalarof" _ "(" _ e:expr_box() _ ")" { TypeSpec::ScalarOf(e) }
             / "struct" _ "{" _ fields:(struct_field() ** _) _ "}" { TypeSpec::Struct(fields) }
             / "interface" _ "{" _ funcs:(func_prototype_decl() ** _) _ "}" { TypeSpec::Interface(funcs) }
             / type_spec_named()
@@ -90,12 +90,15 @@ parser! {
             = "_" { Pattern::Wildcard }
             / p:(pattern_basic() ** (_ "|" _)) { Pattern::Or(p) }
 
+        rule assign_op() -> Option<BinOpArith>
+            = "=" { None }
+            / "+=" { Some(BinOpArith::Add) }
+            / "-=" { Some(BinOpArith::Sub) }
+            / "*=" { Some(BinOpArith::Mul) }
+            / "/=" { Some(BinOpArith::Div) }
+
         rule assign_expr() -> Expr
-            = l:unary_expr() _ "=" _ r:assign_expr() { Expr::BinOp(Box::new(l), BinOp::Assign(None), Box::new(r)) }
-            / l:unary_expr() _ "+=" _ r:assign_expr() { Expr::BinOp(Box::new(l), BinOp::Assign(Some(BinOpArith::Add)), Box::new(r)) }
-            / l:unary_expr() _ "-=" _ r:assign_expr() { Expr::BinOp(Box::new(l), BinOp::Assign(Some(BinOpArith::Sub)), Box::new(r)) }
-            / l:unary_expr() _ "*=" _ r:assign_expr() { Expr::BinOp(Box::new(l), BinOp::Assign(Some(BinOpArith::Mul)), Box::new(r)) }
-            / l:unary_expr() _ "/=" _ r:assign_expr() { Expr::BinOp(Box::new(l), BinOp::Assign(Some(BinOpArith::Div)), Box::new(r)) }
+            = l:unary_expr() _ o:assign_op() _ r:assign_expr() { Expr::BinOp(Box::new(l), BinOp::Assign(o), Box::new(r)) }
             / is_expr()
 
         #[cache_left_rec]
@@ -118,62 +121,79 @@ parser! {
             = l:l_and_expr() _ "&&" _ r:eq_expr() { Expr::BinOp(Box::new(l), BinOp::Arith(BinOpArith::And), Box::new(r)) }
             / eq_expr()
 
+        rule eq_op() -> BinOpRel
+            = "==" { BinOpRel::Eq }
+            / "!=" { BinOpRel::Ne }
+
         #[cache_left_rec]
         rule eq_expr() -> Expr
-            = l:eq_expr() _ "==" _ r:rel_expr() { Expr::BinOp(Box::new(l), BinOp::Rel(BinOpRel::Eq), Box::new(r)) }
-            / l:eq_expr() _ "!=" _ r:rel_expr() { Expr::BinOp(Box::new(l), BinOp::Rel(BinOpRel::Ne), Box::new(r)) }
+            = l:eq_expr() _ o:eq_op() _ r:rel_expr() { Expr::BinOp(Box::new(l), BinOp::Rel(o), Box::new(r)) }
             / rel_expr()
+
+        rule rel_op() -> BinOpRel
+            = "<" { BinOpRel::Lt }
+            / "<=" { BinOpRel::Le }
+            / ">" { BinOpRel::Gt }
+            / ">=" { BinOpRel::Ge }
 
         #[cache_left_rec]
         rule rel_expr() -> Expr
-            = l:rel_expr() _ "<" _ r:shift_expr() { Expr::BinOp(Box::new(l), BinOp::Rel(BinOpRel::Lt), Box::new(r)) }
-            / l:rel_expr() _ "<=" _ r:shift_expr() { Expr::BinOp(Box::new(l), BinOp::Rel(BinOpRel::Le), Box::new(r)) }
-            / l:rel_expr() _ ">" _ r:shift_expr() { Expr::BinOp(Box::new(l), BinOp::Rel(BinOpRel::Gt), Box::new(r)) }
-            / l:rel_expr() _ ">=" _ r:shift_expr() { Expr::BinOp(Box::new(l), BinOp::Rel(BinOpRel::Ge), Box::new(r)) }
+            = l:rel_expr() _ o:rel_op() _ r:shift_expr() { Expr::BinOp(Box::new(l), BinOp::Rel(o), Box::new(r)) }
             / shift_expr()
+
+        rule shift_op() -> BinOpArith
+            = "<<" { BinOpArith::Shl }
+            / ">>" { BinOpArith::Shr }
 
         #[cache_left_rec]
         rule shift_expr() -> Expr
-            = l:shift_expr() _ "<<" _ r:add_expr() { Expr::BinOp(Box::new(l), BinOp::Arith(BinOpArith::Shl), Box::new(r)) }
-            / l:shift_expr() _ ">>" _ r:add_expr() { Expr::BinOp(Box::new(l), BinOp::Arith(BinOpArith::Shr), Box::new(r)) }
+            = l:shift_expr() _ o:shift_op() _ r:add_expr() { Expr::BinOp(Box::new(l), BinOp::Arith(o), Box::new(r)) }
             / add_expr()
+
+        rule add_op() -> BinOpArith
+            = "+" { BinOpArith::Add }
+            / "-" { BinOpArith::Sub }
 
         #[cache_left_rec]
         rule add_expr() -> Expr
-            = l:add_expr() _ "+" _ r:mul_expr() { Expr::BinOp(Box::new(l), BinOp::Arith(BinOpArith::Add), Box::new(r)) }
-            / l:add_expr() _ "-" _ r:mul_expr() { Expr::BinOp(Box::new(l), BinOp::Arith(BinOpArith::Sub), Box::new(r)) }
+            = l:add_expr() _ o:add_op() _ r:mul_expr() { Expr::BinOp(Box::new(l), BinOp::Arith(o), Box::new(r)) }
             / mul_expr()
+
+        rule mul_op() -> BinOpArith
+            = "*" { BinOpArith::Mul }
+            / "/" { BinOpArith::Div }
 
         #[cache_left_rec]
         rule mul_expr() -> Expr
-            = l:mul_expr() _ "*" _ r:unary_expr() { Expr::BinOp(Box::new(l), BinOp::Arith(BinOpArith::Mul), Box::new(r)) }
-            / l:mul_expr() _ "/" _ r:unary_expr() { Expr::BinOp(Box::new(l), BinOp::Arith(BinOpArith::Div), Box::new(r)) }
+            = l:mul_expr() _ o:mul_op() _ r:unary_expr() { Expr::BinOp(Box::new(l), BinOp::Arith(o), Box::new(r)) }
             / unary_expr()
 
-        #[cache_left_rec]
+        rule unary_op() -> UnOp
+            = "~" { UnOp::Not }
+            / "*" { UnOp::Deref }
+            / "&" { UnOp::Ref }
+            / "++" { UnOp::PreInc }
+            / "--" { UnOp::PreDec }
+            / "-(" { UnOp::Neg }
+
         rule unary_expr() -> Expr
-            = "~" _ e:unary_expr() { Expr::UnOp(UnOp::Not, Box::new(e)) }
-            / "*" _ e:unary_expr() { Expr::UnOp(UnOp::Deref, Box::new(e)) }
-            / "&" _ e:unary_expr() { Expr::UnOp(UnOp::Ref, Box::new(e)) }
-            / "++" _ e:unary_expr() { Expr::UnOp(UnOp::PreInc, Box::new(e)) }
-            / "--" _ e:unary_expr() { Expr::UnOp(UnOp::PreDec, Box::new(e)) }
-            / "-" _ e:unary_expr() { Expr::UnOp(UnOp::Neg, Box::new(e)) }
+            = o:unary_op() _ e:unary_expr() { Expr::UnOp(o, Box::new(e)) }
             / postfix_expr()
 
         #[cache_left_rec]
         rule postfix_expr() -> Expr
             = e:postfix_expr() _ "++" { Expr::UnOp(UnOp::PostInc, Box::new(e)) }
             / e:postfix_expr() _ "--" { Expr::UnOp(UnOp::PostDec, Box::new(e)) }
-            / e:postfix_expr() _ "[" _ e2:expr() _ "]" { Expr::UnOp(UnOp::Deref, Box::new(Expr::BinOp(Box::new(e), BinOp::Arith(BinOpArith::Add), Box::new(e2)))) }
+            / e:postfix_expr() _ "[" _ e2:expr_box() _ "]" { Expr::UnOp(UnOp::Deref, Box::new(Expr::BinOp(Box::new(e), BinOp::Arith(BinOpArith::Add), e2))) }
             / e:postfix_expr() _ "." _ m:var() { Expr::BinOp(Box::new(e), BinOp::Member, Box::new(m)) }
             / e:postfix_expr() _ "(" _ args:(expr() ** comma()) _ ")" { Expr::Call(Box::new(e), args) }
             / e:basic_expr()
 
         rule match_arm() -> MatchArm
-            = p:pattern() _ "=>" _ e:expr() { MatchArm(Box::new(p), Box::new(e)) }
+            = p:pattern() _ "=>" _ e:expr_box() { MatchArm(Box::new(p), e) }
 
         rule named_literal_field() -> StructLiteralNamedField
-            = m:ident() _ ":" _ e:expr() { StructLiteralNamedField(m, Box::new(e)) }
+            = m:ident() _ ":" _ e:expr_box() { StructLiteralNamedField(m, e) }
 
         rule basic_expr() -> Expr
             = number()
@@ -182,10 +202,10 @@ parser! {
             / "bitsof" _ "(" _ t:type_spec() _ ")" { Expr::BitsOf(Box::new(t)) }
             / "new" _ "(" _ t:type_spec() _ ")" { Expr::New(Box::new(t)) }
             / "(" _ e:expr() _ ")" { e }
-            / "{" _ s:(statement() ** _) _ e:expr() _ "}" { Expr::Compound(s, Box::new(e)) }
-            / "if" _ "(" _ e1:expr() _ ")" _ "{" _ s1:expr() _ "}" _ "else" _ "{" _ s2:expr() _ "}" { Expr::If(Box::new(e1), Box::new(s1), Box::new(s2)) }
-            / "loop" _ s:statement() { Expr::Loop(Box::new(s)) }
-            / "match" _ "(" _ e:expr() _ ")" _ "{" _ arms:(match_arm() ** comma()) _ "}" { Expr::Match(Box::new(e), arms) }
+            / "{" _ s:(statement() ** _) _ e:expr_box() _ "}" { Expr::Compound(s, e) }
+            / "if" _ "(" _ e1:expr_box() _ ")" _ "{" _ s1:expr_box() _ "}" _ "else" _ "{" _ s2:expr_box() _ "}" { Expr::If(e1, s1, s2) }
+            / "loop" _ s:statement_box() { Expr::Loop(s) }
+            / "match" _ "(" _ e:expr_box() _ ")" _ "{" _ arms:(match_arm() ** comma()) _ "}" { Expr::Match(e, arms) }
             / t:type_spec_named() _ "{" _ fields:(expr() ** comma()) _ "}" { Expr::StructLiteral(Box::new(t), fields) }
             / t:type_spec_named() _ "{" _ fields:(named_literal_field() ** comma()) _ "}" { Expr::StructLiteralNamed(Box::new(t), fields) }
             / t:generic_instanciation() { Expr::Type(Box::new(t)) }
@@ -193,10 +213,10 @@ parser! {
 
         rule var_decl() -> VarDecl
             = i:ident() _ ":" _ t:type_spec() { VarDecl { name: i.to_string(), decl_type: VarDeclType::Scalar(Some(Box::new(t)), None) }}
-            / i:ident() _ ":" _ t:type_spec() _ "=" _ e:expr() { VarDecl { name: i.to_string(), decl_type: VarDeclType::Scalar(Some(Box::new(t)), Some(Box::new(e))) }}
-            / i:ident() _ "=" _ e:expr() { VarDecl { name: i.to_string(), decl_type: VarDeclType::Scalar(None, Some(Box::new(e))) }}
-            / i:ident() _ "[" _ e:expr() _ "]" { VarDecl { name: i.to_string(), decl_type: VarDeclType::Array(Some(Box::new(e)), None) }}
-            / i:ident() _ "[" _ e:expr()? _ "]" _ "=" _ e2:string_literal() { VarDecl { name: i.to_string(), decl_type: VarDeclType::Array(e.map(Box::new), Some(e2)) }}
+            / i:ident() _ ":" _ t:type_spec() _ "=" _ e:expr_box() { VarDecl { name: i.to_string(), decl_type: VarDeclType::Scalar(Some(Box::new(t)), Some(e)) }}
+            / i:ident() _ "=" _ e:expr_box() { VarDecl { name: i.to_string(), decl_type: VarDeclType::Scalar(None, Some(e)) }}
+            / i:ident() _ "[" _ e:expr_box() _ "]" { VarDecl { name: i.to_string(), decl_type: VarDeclType::Array(Some(e), None) }}
+            / i:ident() _ "[" _ e:expr_box()? _ "]" _ "=" _ e2:string_literal() { VarDecl { name: i.to_string(), decl_type: VarDeclType::Array(e, Some(e2)) }}
 
         rule type_params() -> Vec<String>
             = "<" _ params:(ident() ++ comma()) _ ">" { params }
@@ -219,33 +239,39 @@ parser! {
 
         rule decl_or_expr() -> DeclOrExpr
             = v:var_decl_stmt() { DeclOrExpr::Decl(Box::new(v)) }
-            / e:expr() { DeclOrExpr::Expr(Box::new(e)) }
+            / e:expr_box() { DeclOrExpr::Expr(e) }
 
         pub rule statement() -> Stmt
             = _ s:statement_inner() _ { s }
+
+        rule statement_box() -> Box<Stmt>
+            = s:statement() { Box::new(s) }
+
+        rule expr_box() -> Box<Expr>
+            = e:expr() { Box::new(e) }
 
         rule statement_inner() -> Stmt
             = ";" { Stmt::Empty }
             / "(" _ v:(ident() ++ comma()) _ ")" _ "=" _ "(" _ e:(expr() ++ comma()) _ ")" _ ";" { Stmt::TupleAssign { names: v, values: e } }
             / f:func_decl() { Stmt::FnDecl(Box::new(f)) }
             / "impl" _ i:ident() _ "{" _ f:(func_decl() ** _) _ "}" { Stmt::Impl { type_name: i.to_string(), methods: f } }
-            / "if" _ "(" _ c:expr() _ ")" s:statement() !"else" { Stmt::If { condition: Box::new(c), code: Box::new(s), code_else: None } }
-            / "if" _ "(" _ c:expr() _ ")" s:statement() "else" e:statement() { Stmt::If { condition: Box::new(c), code: Box::new(s), code_else: Some(Box::new(e)) } }
-            / "const" _ i:ident() _ "=" _ e:expr() semi() { Stmt::ConstDecl { name: i.to_string(), value: Box::new(e) } }
+            / "if" _ "(" _ c:expr_box() _ ")" s:statement_box() !"else" { Stmt::If { condition: c, code: s, code_else: None } }
+            / "if" _ "(" _ c:expr_box() _ ")" s:statement_box() "else" e:statement_box() { Stmt::If { condition: c, code: s, code_else: Some(e) } }
+            / "const" _ i:ident() _ "=" _ e:expr_box() semi() { Stmt::ConstDecl { name: i.to_string(), value: e } }
             / s:var_decl_stmt() semi() { Stmt::VarDeclList(s) }
             / "type" _ types:(type_decl() ** comma()) semi() { Stmt::TypeDeclList(types) }
             / block()
-            / "return" _ e:expr()? semi() { Stmt::Return(e.map(Box::new)) }
-            / "break" _ e:expr()? semi() { Stmt::Break(e.map(Box::new)) }
-            / "assert" _ e:expr() semi() { Stmt::Assert(Box::new(e)) }
-            / "print" _ e:expr() semi() { Stmt::Print(Box::new(e)) }
+            / "return" _ e:expr_box()? semi() { Stmt::Return(e) }
+            / "break" _ e:expr_box()? semi() { Stmt::Break(e) }
+            / "assert" _ e:expr_box() semi() { Stmt::Assert(e) }
+            / "print" _ e:expr_box() semi() { Stmt::Print(e) }
             / "continue" semi() { Stmt::Continue }
-            / "while" _ "(" _ e:expr() _ ")" _ s:statement() { Stmt::While { condition:Box::new(e), code: Box::new(s) } }
-            / "do" _ s:statement() _ "while" _ "(" _ e:expr() _ ")" semi() { Stmt::DoWhile { condition:Box::new(e), code: Box::new(s) } }
-            / "loop" _ s:statement() { Stmt::Loop { code: Box::new(s) } }
-            / "for" _ "(" _ "var" _ i:ident() _ "in" _ e:expr() _ ")" _ s:statement() { Stmt::ForEach { variable: i.to_string(), iterable: Box::new(e), code: Box::new(s) } }
-            / "for" _ "(" _ e1:decl_or_expr()? semi() _ e2:expr()? semi() _ e3:expr()? _ ")" _ s:statement() { Stmt::For{init:e1, condition: e2.map(Box::new), step:e3.map(Box::new), code:Box::new(s)} }
-            / e:expr() semi() { Stmt::Discard(Box::new(e)) }
+            / "while" _ "(" _ e:expr_box() _ ")" _ s:statement_box() { Stmt::While { condition:e, code: s } }
+            / "do" _ s:statement_box() _ "while" _ "(" _ e:expr_box() _ ")" semi() { Stmt::DoWhile { condition:e, code: s } }
+            / "loop" _ s:statement_box() { Stmt::Loop { code: s } }
+            / "for" _ "(" _ "var" _ i:ident() _ "in" _ e:expr_box() _ ")" _ s:statement_box() { Stmt::ForEach { variable: i.to_string(), iterable: e, code: s } }
+            / "for" _ "(" _ e1:decl_or_expr()? semi() _ e2:expr_box()? semi() _ e3:expr_box()? _ ")" _ s:statement_box() { Stmt::For{init:e1, condition: e2, step:e3, code:s} }
+            / e:expr_box() semi() { Stmt::Discard(e) }
 
     }
 }
