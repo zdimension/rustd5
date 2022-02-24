@@ -36,7 +36,7 @@ parser!
 
         rule func_prototype() -> FuncSignature
             = "func" _ i:ident() _ "(" _ args:(var_typed() ** comma()) _ ")" _ ":" _ ret:type_spec() { FuncSignature { name: i.to_string(), args, ret, generic_info: None } }
-            / "func" _ i:ident() _ p:type_params() _ "(" _ args:(var_typed() ** comma()) _ ")" _ ":" _ ret:type_spec() _ c:generic_constraints()? { FuncSignature { name: i.to_string(), args, ret, generic_info: Some(GenericInfo { type_params: p, constraints: c.unwrap_or_default() }) } }
+            / "func" _ i:ident() _ type_params:type_params() _ "(" _ args:(var_typed() ** comma()) _ ")" _ ":" _ ret:type_spec() _ c:generic_constraints()? { FuncSignature { name: i.to_string(), args, ret, generic_info: Some(GenericInfo { type_params, constraints: c.unwrap_or_default() }) } }
 
         rule func_prototype_decl() -> FuncSignature
             = _ f:func_prototype() semi() _ { f }
@@ -230,7 +230,7 @@ parser!
             / i:ident() _ p:type_params() _ c:generic_constraints()? _ "=" _ t:type_spec() { TypeDecl { name: i.to_string(), type_spec: t, generic_info: Some(GenericInfo { type_params: p, constraints: c.unwrap_or_default() }) }}
 
         rule func_decl() -> FnDecl
-            = f:func_prototype() s:block() { FnDecl(f, s) }
+            = signature:func_prototype() code:block() { FnDecl { signature, code } }
 
         rule block() -> Stmt
             = _ "{" _ s:(statement() ** _) _ "}" _ { Stmt::Block(s) }
@@ -253,12 +253,12 @@ parser!
 
         rule statement_inner() -> Stmt
             = ";" { Stmt::Empty }
-            / "(" _ v:(ident() ++ comma()) _ ")" _ "=" _ "(" _ e:(expr() ++ comma()) _ ")" _ ";" { Stmt::TupleAssign { names: v, values: e } }
+            / "(" _ names:(ident() ++ comma()) _ ")" _ "=" _ "(" _ values:(expr() ++ comma()) _ ")" _ ";" { Stmt::TupleAssign { names, values } }
             / f:func_decl() { Stmt::FnDecl(Box::new(f)) }
-            / "impl" _ i:ident() _ "{" _ f:(func_decl() ** _) _ "}" { Stmt::Impl { type_name: i.to_string(), methods: f } }
-            / "if" _ "(" _ c:expr_box() _ ")" s:statement_box() !"else" { Stmt::If { condition: c, code: s, code_else: None } }
-            / "if" _ "(" _ c:expr_box() _ ")" s:statement_box() "else" e:statement_box() { Stmt::If { condition: c, code: s, code_else: Some(e) } }
-            / "const" _ i:ident() _ "=" _ e:expr_box() semi() { Stmt::ConstDecl { name: i.to_string(), value: e } }
+            / "impl" _ i:ident() _ "{" _ methods:(func_decl() ** _) _ "}" { Stmt::Impl { type_name: i.to_string(), methods } }
+            / "if" _ "(" _ condition:expr_box() _ ")" code:statement_box() !"else" { Stmt::If { condition, code, code_else: None } }
+            / "if" _ "(" _ condition:expr_box() _ ")" code:statement_box() "else" code_else:statement_box() { Stmt::If { condition, code, code_else: Some(code_else) } }
+            / "const" _ i:ident() _ "=" _ value:expr_box() semi() { Stmt::ConstDecl { name: i.to_string(), value } }
             / s:var_decl_stmt() semi() { Stmt::VarDeclList(s) }
             / "type" _ types:(type_decl() ** comma()) semi() { Stmt::TypeDeclList(types) }
             / block()
@@ -267,11 +267,11 @@ parser!
             / "assert" _ e:expr_box() semi() { Stmt::Assert(e) }
             / "print" _ e:expr_box() semi() { Stmt::Print(e) }
             / "continue" semi() { Stmt::Continue }
-            / "while" _ "(" _ e:expr_box() _ ")" _ s:statement_box() { Stmt::While { condition:e, code: s } }
-            / "do" _ s:statement_box() _ "while" _ "(" _ e:expr_box() _ ")" semi() { Stmt::DoWhile { condition:e, code: s } }
-            / "loop" _ s:statement_box() { Stmt::Loop { code: s } }
-            / "for" _ "(" _ "var" _ i:ident() _ "in" _ e:expr_box() _ ")" _ s:statement_box() { Stmt::ForEach { variable: i.to_string(), iterable: e, code: s } }
-            / "for" _ "(" _ e1:decl_or_expr()? semi() _ e2:expr_box()? semi() _ e3:expr_box()? _ ")" _ s:statement_box() { Stmt::For{init:e1, condition: e2, step:e3, code:s} }
+            / "while" _ "(" _ condition:expr_box() _ ")" _ code:statement_box() { Stmt::While { condition, code } }
+            / "do" _ code:statement_box() _ "while" _ "(" _ condition:expr_box() _ ")" semi() { Stmt::DoWhile { condition, code } }
+            / "loop" _ code:statement_box() { Stmt::Loop { code } }
+            / "for" _ "(" _ "var" _ i:ident() _ "in" _ iterable:expr_box() _ ")" _ code:statement_box() { Stmt::ForEach { variable: i.to_string(), iterable, code } }
+            / "for" _ "(" _ init:decl_or_expr()? semi() condition:expr_box()? semi() step:expr_box()? _ ")" _ code:statement_box() { Stmt::For{init, condition, step, code} }
             / e:expr_box() semi() { Stmt::Discard(e) }
 
     }

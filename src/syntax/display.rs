@@ -296,3 +296,11 @@ impl Display for TypedVar
         write!(f, "{}: {}", self.0, self.1)
     }
 }
+
+impl Display for FnDecl
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        write!(f, "{}\n{}", self.signature, self.code)
+    }
+}
