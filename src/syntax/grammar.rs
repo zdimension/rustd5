@@ -1,7 +1,8 @@
 use peg::parser;
 use crate::syntax::ast::*;
 
-parser! {
+parser!
+{
     pub grammar td5() for str
     {
         pub rule expr() -> Expr
