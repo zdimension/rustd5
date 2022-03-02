@@ -155,17 +155,17 @@ impl Display for BinOpArith
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
     {
-        match self
+        write!(f, " {} ", match self
         {
-            BinOpArith::Add => write!(f, "+"),
-            BinOpArith::Sub => write!(f, "-"),
-            BinOpArith::Mul => write!(f, "*"),
-            BinOpArith::Div => write!(f, "/"),
-            BinOpArith::And => write!(f, "&&"),
-            BinOpArith::Or => write!(f, "||"),
-            BinOpArith::Shl => write!(f, "<<"),
-            BinOpArith::Shr => write!(f, ">>"),
-        }
+            BinOpArith::Add => "+",
+            BinOpArith::Sub => "-",
+            BinOpArith::Mul => "*",
+            BinOpArith::Div => "/",
+            BinOpArith::And => "&&",
+            BinOpArith::Or =>  "||",
+            BinOpArith::Shl => "<<",
+            BinOpArith::Shr => ">>",
+        })
     }
 }
 
@@ -173,15 +173,15 @@ impl Display for BinOpRel
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
     {
-        match self
+        write!(f, " {} ", match self
         {
-            BinOpRel::Eq => write!(f, "=="),
-            BinOpRel::Ne => write!(f, "!="),
-            BinOpRel::Lt => write!(f, "<"),
-            BinOpRel::Le => write!(f, "<="),
-            BinOpRel::Gt => write!(f, ">"),
-            BinOpRel::Ge => write!(f, ">="),
-        }
+            BinOpRel::Eq => "==",
+            BinOpRel::Ne => "!=",
+            BinOpRel::Lt => "<",
+            BinOpRel::Le => "<=",
+            BinOpRel::Gt => ">",
+            BinOpRel::Ge => ">=",
+        })
     }
 }
 
@@ -195,11 +195,12 @@ impl Display for BinOp
             BinOp::Rel(op) => write!(f, "{}", op),
             BinOp::Assign(op) =>
                 {
+                    write!(f, " ")?;
                     if let Some(op) = op
                     {
                         write!(f, "{}", op)?;
                     }
-                    write!(f, "=")
+                    write!(f, "= ")
                 }
             BinOp::Member => write!(f, "."),
         }
@@ -275,7 +276,7 @@ impl Display for Expr
             Expr::Match(expr, arms) => write!(f, "match {} {{ {} }}", expr, arms.iter().map(|a| format!("{} => {}", a.0, a.1)).collect::<Vec<String>>().join(", ")),
             Expr::StructLiteral(name, fields) => write!(f, "{} {{ {} }}", name, fields.iter().map(Expr::to_string).collect::<Vec<String>>().join(", ")),
             Expr::StructLiteralNamed(name, fields) => write!(f, "{} {{ {} }}", name, fields.iter().map(|f| format!("{}: {}", f.0, f.1)).collect::<Vec<String>>().join(", ")),
-            Expr::BinOp(lhs, op, rhs) => write!(f, "({} {} {})", lhs, op, rhs),
+            Expr::BinOp(lhs, op, rhs) => write!(f, "({}{}{})", lhs, op, rhs),
             Expr::Is(lhs, rhs) => write!(f, "({} is {})", lhs, rhs),
             Expr::UnOp(op, expr) => match op.get_position()
             {
