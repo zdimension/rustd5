@@ -1,7 +1,111 @@
 extern crate derive_more;
 extern crate peg;
 
+use std::borrow::Borrow;
+use std::cell::{Cell, RefCell};
+use std::fmt::{Debug, Display};
+use std::ops::{Deref, Range};
+use std::rc::Rc;
 use derive_more::Constructor;
+use crate::analysis::typing::Type;
+
+pub struct Erc<T>
+{
+    expr: Rc<(T, RefCell<NodeMetadata>)>,
+}
+
+#[derive(Debug, Clone)]
+pub struct NodeMetadata
+{
+    pub start: usize,
+    pub end: usize,
+    pub type_: Rc<Option<Type>>,
+}
+
+impl <T> Erc<T>
+{
+    pub fn new(expr: T, start: usize, end: usize) -> Self
+    {
+        Self { expr: Rc::new((expr, RefCell::new(NodeMetadata { start, end, type_: Rc::new(None) }))) }
+    }
+
+    pub fn meta(&self) -> RefCell<NodeMetadata>
+    {
+        self.expr.1.clone()
+    }
+
+    pub fn set_type(&self, type_: Type)
+    {
+        self.expr.deref().1.borrow_mut().type_ = Rc::new(Some(type_));
+    }
+
+    pub fn range(&self) -> Range<usize>
+    {
+        let meta = self.meta();
+        let val = meta.borrow();
+        val.start..val.end
+    }
+}
+
+impl <T> Clone for Erc<T>
+where
+    T: Clone
+{
+    fn clone(&self) -> Self
+    {
+        Self { expr: Rc::clone(&self.expr) }
+    }
+}
+
+impl <T> AsRef<T> for Erc<T>
+{
+    fn as_ref(&self) -> &T
+    {
+        &self.expr.deref().0.borrow()
+    }
+}
+
+impl <T> Display for Erc<T>
+where
+    T: Display
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result
+    {
+        std::fmt::Display::fmt(&self.expr.deref().0.borrow(), f)
+    }
+}
+
+impl <T> Deref for Erc<T>
+{
+    type Target = T;
+
+    fn deref(&self) -> &T
+    {
+        &self.expr.deref().0.borrow()
+    }
+}
+
+impl <T> Debug for Erc<T>
+where
+    T: Debug
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result
+    {
+        std::fmt::Debug::fmt(&self.expr, f)
+    }
+}
+
+impl <T: PartialEq> PartialEq for Erc<T>
+{
+    fn eq(&self, other: &Self) -> bool
+    {
+        Rc::ptr_eq(&self.expr, &other.expr)
+    }
+}
+
+impl <T: Eq> Eq for Erc<T>
+{
+}
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct VarDeclStmt(pub Vec<VarDecl>);
@@ -12,8 +116,8 @@ pub struct VarDeclStmt(pub Vec<VarDecl>);
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum DeclOrExpr
 {
-    Decl(Box<VarDeclStmt>),
-    Expr(Box<Expr>)
+    Decl(Erc<VarDeclStmt>),
+    Expr(Erc<Expr>)
 }
 
 /// Statement
@@ -30,7 +134,7 @@ pub enum Stmt
     /// a = 5;
     /// b++;
     /// ```
-    Discard(Box<Expr>),
+    Discard(Erc<Expr>),
     /// Variable declaration list
     /// ```
     /// var x = 5, y = 6;
@@ -45,36 +149,36 @@ pub enum Stmt
     /// ```
     /// (x, y) = (5, 6);
     /// ```
-    TupleAssign { names: Vec<String>, values: Vec<Expr> },
+    TupleAssign { names: Vec<String>, values: Vec<Erc<Expr>> },
     /// Constant declaration
     /// ```
     /// const size = 123;
     /// ```
-    ConstDecl { name: String, value: Box<Expr> },
+    ConstDecl { name: String, value: Erc<Expr> },
     /// Print statement
     /// ```
     /// print foo();
     /// ```
-    Print(Box<Expr>),
+    Print(Erc<Expr>),
     /// Return statement
     /// ```
     /// return;
     /// return foo();
     /// ```
-    Return(Option<Box<Expr>>),
+    Return(Option<Erc<Expr>>),
     /// Assert statement
     ///
     /// The expression must be a compile-time boolean constant.
     /// ```
     /// assert sizeof(type) == 4;
     /// ```
-    Assert(Box<Expr>),
+    Assert(Erc<Expr>),
     /// Loop break statement
     /// ```
     /// break;
     /// break foo();
     /// ```
-    Break(Option<Box<Expr>>),
+    Break(Option<Erc<Expr>>),
     /// Loop continue statement
     /// ```
     /// continue;
@@ -87,7 +191,7 @@ pub enum Stmt
     ///     foo();
     /// }
     /// ```
-    While { condition: Box<Expr>, code: Box<Stmt> },
+    While { condition: Erc<Expr>, code: Erc<Stmt> },
     /// Simple loop
     /// ```
     /// loop
@@ -95,7 +199,7 @@ pub enum Stmt
     ///    foo();
     /// }
     /// ```
-    Loop { code: Box<Stmt> },
+    Loop { code: Erc<Stmt> },
     /// C-style for loop
     /// ```
     /// for (var x = 0; x < 10; x++)
@@ -103,7 +207,7 @@ pub enum Stmt
     ///     foo(x);
     /// }
     /// ```
-    For { init: Option<DeclOrExpr>, condition: Option<Box<Expr>>, step: Option<Box<Expr>>, code: Box<Stmt> },
+    For { init: Option<DeclOrExpr>, condition: Option<Erc<Expr>>, step: Option<Erc<Expr>>, code: Erc<Stmt> },
     /// Iterable foreach loop
     /// ```
     /// for (var x in 0..10)
@@ -111,7 +215,7 @@ pub enum Stmt
     ///     foo(x);
     /// }
     /// ```
-    ForEach { variable: String, iterable: Box<Expr>, code: Box<Stmt> },
+    ForEach { variable: String, iterable: Erc<Expr>, code: Erc<Stmt> },
     /// If statement
     /// ```
     /// if (x == 5)
@@ -119,14 +223,14 @@ pub enum Stmt
     ///     foo();
     /// }
     /// ```
-    If { condition: Box<Expr>, code: Box<Stmt>, code_else: Option<Box<Stmt>> },
+    If { condition: Erc<Expr>, code: Erc<Stmt>, code_else: Option<Erc<Stmt>> },
     /// Do-while loop
     /// ```
     /// do
     /// {
     ///    foo();
     /// } while (x == 5);
-    DoWhile { code: Box<Stmt>, condition: Box<Expr> },
+    DoWhile { code: Erc<Stmt>, condition: Erc<Expr> },
     /// Implementation statement
     /// ```
     /// type Point = struct { x: u32; y: u32; };
@@ -140,7 +244,7 @@ pub enum Stmt
     /// ```
     /// func foo(x: u32, y: u32): u32 { return x + y; }
     /// ```
-    FnDecl(Box<FnDecl>),
+    FnDecl(Erc<FnDecl>),
     /// Code block
     /// ```
     /// {
@@ -189,13 +293,13 @@ pub enum VarDeclType
     /// ```
     /// var x: u32 = 123;
     /// ```
-    Scalar(Option<Box<TypeSpec>>, Option<Box<Expr>>),
+    Scalar(Option<Erc<TypeSpec>>, Option<Erc<Expr>>),
     /// Array declaration
     ///
     /// ```
     /// var x[10] = "ABC";
     /// ```
-    Array(Option<Box<Expr>>, Option<String>),
+    Array(Option<Erc<Expr>>, Option<String>),
 }
 
 /// Variable declaration
@@ -248,29 +352,29 @@ pub enum TypeSpec
     /// ```
     /// type u32ptr = u32*;
     /// ```
-    Pointer(Box<TypeSpec>),
+    Pointer(Erc<TypeSpec>),
     /// Global pointer type
     /// ```
     /// type u32ptrglob = u32* global;
     /// ```
-    Global(Box<TypeSpec>),
+    Global(Erc<TypeSpec>),
     /// Array type
     /// ```
     /// type u32arr = u32[10];
     /// ```
-    Array(Box<TypeSpec>, Box<Expr>),
+    Array(Erc<TypeSpec>, Erc<Expr>),
     /// Typeof
     /// ```
     /// var x = 123;
     /// type x_type = typeof(x);
     /// ```
-    TypeOf(Box<Expr>),
+    TypeOf(Erc<Expr>),
     /// Create scalar type with specified size
     /// ```
     /// type dyn_number = scalarof(2 * 16);
     /// // dyn_number is u32
     /// ```
-    ScalarOf(Box<Expr>),
+    ScalarOf(Erc<Expr>),
     /// Structure type
     /// ```
     /// type Point = struct { x: u32, y: u32 };
@@ -283,14 +387,14 @@ pub enum TypeSpec
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
-pub struct MatchArm(pub Box<Pattern>, pub Box<Expr>);
+pub struct MatchArm(pub Erc<Pattern>, pub Erc<Expr>);
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum Pattern
 {
-    Value(Box<Expr>),
-    Range(Box<Expr>, Box<Expr>),
-    RangeInclusive(Box<Expr>, Box<Expr>),
+    Value(Erc<Expr>),
+    Range(Erc<Expr>, Erc<Expr>),
+    RangeInclusive(Erc<Expr>, Erc<Expr>),
     Or(Vec<Pattern>),
     Wildcard,
 }
@@ -366,7 +470,7 @@ impl UnOp
 
 /// Named field in a struct literal expression
 #[derive(Clone, PartialEq, Eq, Debug)]
-pub struct StructLiteralNamedField(pub String, pub Box<Expr>);
+pub struct StructLiteralNamedField(pub String, pub Erc<Expr>);
 
 /// Base expression node
 ///
@@ -379,22 +483,22 @@ pub enum Expr
     /// var x = 123;
     /// var y = 456u16;
     /// ```
-    Number(i64, Option<u64>),
+    Number(u64, Option<u8>),
     /// Size (in cells) of type
     /// ```
     /// var x = sizeof(u32);
     /// ```
-    SizeOf(Box<TypeSpec>),
+    SizeOf(Erc<TypeSpec>),
     /// Size (in bits) of type
     /// ```
     /// var x = bitsof(u32);
     /// ```
-    BitsOf(Box<TypeSpec>),
+    BitsOf(Erc<TypeSpec>),
     /// Allocation expression
     /// ```
     /// var x = new(point);
     /// ```
-    New(Box<TypeSpec>),
+    New(Erc<TypeSpec>),
     /// Identifier
     /// ```
     /// foo
@@ -404,17 +508,17 @@ pub enum Expr
     /// ```
     /// var x = { var v = foo(); v + 1 };
     /// ```
-    Compound(Vec<Stmt>, Box<Expr>),
+    Compound(Vec<Stmt>, Erc<Expr>),
     /// Conditional expression
     /// ```
     /// var x = if (foo()) { 1 } else { 2 };
     /// ```
-    If(Box<Expr>, Box<Expr>, Box<Expr>),
+    If(Erc<Expr>, Erc<Expr>, Erc<Expr>),
     /// Loop expression
     /// ```
     /// var x = loop { var y = foo(); if (y > 10) { break y; } };
     /// ```
-    Loop(Box<Stmt>),
+    Loop(Erc<Stmt>),
     /// Match expression
     /// ```
     /// var res = match (p)
@@ -424,43 +528,43 @@ pub enum Expr
     ///     _ => 3
     /// };
     /// ```
-    Match(Box<Expr>, Vec<MatchArm>),
+    Match(Erc<Expr>, Vec<MatchArm>),
     /// Structure literal
     /// ```
     /// var x = point { 5, 6 };
     /// ```
-    StructLiteral(Box<TypeSpec>, Vec<Expr>),
+    StructLiteral(Erc<TypeSpec>, Vec<Erc<Expr>>),
     /// Structure literal with explicitely named fields
     /// ```
     /// var x = point { x: 5, y: 6 };
     /// ```
-    StructLiteralNamed(Box<TypeSpec>, Vec<StructLiteralNamedField>),
+    StructLiteralNamed(Erc<TypeSpec>, Vec<StructLiteralNamedField>),
     /// Binary operation
     /// ```
     /// var x = foo() + bar();
     /// ```
-    BinOp(Box<Expr>, BinOp, Box<Expr>),
+    BinOp(Erc<Expr>, BinOp, Erc<Expr>),
     /// Inline pattern matching expression
     /// ```
     /// var x = foo() is point { x: 0..5 };
     /// ```
-    Is(Box<Expr>, Box<Pattern>),
+    Is(Erc<Expr>, Erc<Pattern>),
     /// Unary operation
     /// ```
     /// var x = -foo();
     /// ```
-    UnOp(UnOp, Box<Expr>),
+    UnOp(UnOp, Erc<Expr>),
     /// Function call expression
     /// ```
     /// var x = foo(1, 2, 3);
     /// var y = bar(x);
     /// var z = x |> bar; // equivalent to previous line
     /// ```
-    Call(Box<Expr>, Vec<Expr>),
+    Call(Erc<Expr>, Vec<Erc<Expr>>),
     /// Internal expression type, used for storing type specs in expression contexts
-    Type(Box<TypeSpec>),
+    Type(Erc<TypeSpec>),
     /// Internal expression type, used for storing patterns in expression contexts
-    Pattern(Box<Pattern>)
+    Pattern(Erc<Pattern>)
 }
 
 /// Typed variable declaration

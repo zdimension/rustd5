@@ -1,5 +1,6 @@
 use std::fmt;
 use std::fmt::Display;
+use std::ops::Deref;
 use itertools::Itertools;
 use crate::syntax::ast::*;
 
@@ -274,7 +275,7 @@ impl Display for Expr
             Expr::If(cond, then, els) => write!(f, "if ({}) t {} else {}", cond, then, els),
             Expr::Loop(body) => write!(f, "loop {}", body), // TODO: incorrect indentation
             Expr::Match(expr, arms) => write!(f, "match {} {{ {} }}", expr, arms.iter().map(|a| format!("{} => {}", a.0, a.1)).collect::<Vec<String>>().join(", ")),
-            Expr::StructLiteral(name, fields) => write!(f, "{} {{ {} }}", name, fields.iter().map(Expr::to_string).collect::<Vec<String>>().join(", ")),
+            Expr::StructLiteral(name, fields) => write!(f, "{} {{ {} }}", name, fields.iter().map(Deref::deref).map(Expr::to_string).collect::<Vec<String>>().join(", ")),
             Expr::StructLiteralNamed(name, fields) => write!(f, "{} {{ {} }}", name, fields.iter().map(|f| format!("{}: {}", f.0, f.1)).collect::<Vec<String>>().join(", ")),
             Expr::BinOp(lhs, op, rhs) => write!(f, "({}{}{})", lhs, op, rhs),
             Expr::Is(lhs, rhs) => write!(f, "({} is {})", lhs, rhs),

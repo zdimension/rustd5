@@ -1,3 +1,3 @@
-mod ast;
-pub(crate) mod grammar;
+pub mod ast;
+pub mod grammar;
 mod display;

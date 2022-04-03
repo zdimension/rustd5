@@ -1,5 +1,6 @@
 mod tests;
 mod syntax;
+mod analysis;
 
 use codespan_reporting::diagnostic::{Diagnostic, Label};
 use codespan_reporting::files::SimpleFile;
@@ -21,8 +22,16 @@ fn main() -> anyhow::Result<()> {
             Err(error) => return Err(error.into()),
         };
 
-        match syntax::grammar::td5::expr(&line) {
-            Ok(number) => println!("{}", number),
+        match syntax::grammar::td5::erc_expr(&line) {
+            Ok(number) => {
+                match analysis::analysis(number.clone()) {
+                    Ok(_) => println!("{}", number),
+                    Err(error) => {
+                        let file = SimpleFile::new("<repl>", line);
+                        term::emit(&mut writer.lock(), &config, &file, &error)?;
+                    }
+                }
+            },
             Err(error) => {
                 let file = SimpleFile::new("<repl>", line);
 
