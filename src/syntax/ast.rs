@@ -1,17 +1,23 @@
 extern crate derive_more;
 extern crate peg;
 
-use std::borrow::Borrow;
-use std::cell::{Cell, RefCell};
+use std::borrow::{Borrow};
+use std::cell::{Ref, RefCell, RefMut};
 use std::fmt::{Debug, Display};
 use std::ops::{Deref, Range};
 use std::rc::Rc;
 use derive_more::Constructor;
 use crate::analysis::typing::Type;
 
+#[derive(Debug, Clone)]
+pub struct NodeReal<T> {
+    pub node: T,
+    pub meta: NodeMetadata,
+}
+
 pub struct Erc<T>
 {
-    expr: Rc<(T, RefCell<NodeMetadata>)>,
+    expr: Rc<RefCell<NodeReal<T>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -22,21 +28,29 @@ pub struct NodeMetadata
     pub type_: Rc<Option<Type>>,
 }
 
-impl <T> Erc<T>
+impl <T: Clone> Erc<T>
 {
     pub fn new(expr: T, start: usize, end: usize) -> Self
     {
-        Self { expr: Rc::new((expr, RefCell::new(NodeMetadata { start, end, type_: Rc::new(None) }))) }
+        Self { expr: Rc::new(RefCell::new(NodeReal {
+            node: expr,
+            meta: NodeMetadata { start, end, type_: Rc::new(None) }
+        })) }
     }
 
-    pub fn meta(&self) -> RefCell<NodeMetadata>
+    pub fn meta(&self) -> NodeMetadata
     {
-        self.expr.1.clone()
+        self.expr.deref().borrow().meta.clone()
+    }
+
+    pub fn code(&self) -> T
+    {
+        self.expr.deref().borrow().node.clone()
     }
 
     pub fn set_type(&self, type_: Type)
     {
-        self.expr.deref().1.borrow_mut().type_ = Rc::new(Some(type_));
+        self.expr.deref().borrow_mut().meta.type_ = Rc::new(Some(type_));
     }
 
     pub fn range(&self) -> Range<usize>
@@ -44,6 +58,16 @@ impl <T> Erc<T>
         let meta = self.meta();
         let val = meta.borrow();
         val.start..val.end
+    }
+
+    pub fn borrow_mut(&self) -> RefMut<'_, NodeReal<T>>
+    {
+        self.expr.deref().borrow_mut()
+    }
+
+    pub fn borrow(&self) -> Ref<'_, NodeReal<T>>
+    {
+        self.expr.deref().borrow()
     }
 }
 
@@ -57,11 +81,11 @@ where
     }
 }
 
-impl <T> AsRef<T> for Erc<T>
+impl <T> AsRef<RefCell<NodeReal<T>>> for Erc<T>
 {
-    fn as_ref(&self) -> &T
+    fn as_ref(&self) -> &RefCell<NodeReal<T>>
     {
-        &self.expr.deref().0.borrow()
+        &self.expr.as_ref()
     }
 }
 
@@ -71,17 +95,17 @@ where
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result
     {
-        std::fmt::Display::fmt(&self.expr.deref().0.borrow(), f)
+        std::fmt::Display::fmt(&self.expr.deref().borrow().node, f)
     }
 }
 
 impl <T> Deref for Erc<T>
 {
-    type Target = T;
+    type Target = RefCell<NodeReal<T>>;
 
-    fn deref(&self) -> &T
+    fn deref(&self) -> &RefCell<NodeReal<T>>
     {
-        &self.expr.deref().0.borrow()
+        self.expr.deref()
     }
 }
 
@@ -483,7 +507,7 @@ pub enum Expr
     /// var x = 123;
     /// var y = 456u16;
     /// ```
-    Number(u64, Option<u8>),
+    Number(usize, Option<u8>),
     /// Size (in cells) of type
     /// ```
     /// var x = sizeof(u32);

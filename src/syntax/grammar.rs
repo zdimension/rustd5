@@ -28,7 +28,7 @@ parser!
             / "\\r" { '\r' }
             / "\\0" { '\0' }
 
-        rule erc<T>(x: rule<T>) -> Erc<T>
+        rule erc<T: Clone>(x: rule<T>) -> Erc<T>
             = s:position!() v:x() e:position!() {Erc::new(v, s, e)}
 
         rule string_literal() -> String
@@ -204,7 +204,7 @@ parser!
 
         rule basic_expr() -> Expr
             = number()
-            / c:char_literal() { Expr::Number(c as u64, None) }
+            / c:char_literal() { Expr::Number(c as usize, None) }
             / "sizeof" _ "(" _ t:erc(<type_spec()>) _ ")" { Expr::SizeOf(t) }
             / "bitsof" _ "(" _ t:erc(<type_spec()>) _ ")" { Expr::BitsOf(t) }
             / "new" _ "(" _ t:erc(<type_spec()>) _ ")" { Expr::New(t) }

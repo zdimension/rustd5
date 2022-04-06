@@ -2,12 +2,14 @@ mod tests;
 mod syntax;
 mod analysis;
 
+use std::rc::Rc;
 use codespan_reporting::diagnostic::{Diagnostic, Label};
 use codespan_reporting::files::SimpleFile;
 use codespan_reporting::term;
 use codespan_reporting::term::termcolor::{ColorChoice, StandardStream};
 use rustyline::error::ReadlineError;
 use rustyline::Editor;
+use crate::analysis::StackFrame;
 
 
 fn main() -> anyhow::Result<()> {
@@ -15,6 +17,7 @@ fn main() -> anyhow::Result<()> {
     let config = codespan_reporting::term::Config::default();
     let mut editor = Editor::<()>::new();
 
+    let frame = Rc::new(StackFrame::empty());
     loop {
         let line = match editor.readline("> ") {
             Ok(line) => line,
@@ -24,7 +27,7 @@ fn main() -> anyhow::Result<()> {
 
         match syntax::grammar::td5::erc_expr(&line) {
             Ok(number) => {
-                match analysis::analysis(number.clone()) {
+                match analysis::analysis(number.clone(), &frame) {
                     Ok(_) => println!("{}", number),
                     Err(error) => {
                         let file = SimpleFile::new("<repl>", line);

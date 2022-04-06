@@ -1,6 +1,5 @@
 use std::fmt;
 use std::fmt::Display;
-use std::ops::Deref;
 use itertools::Itertools;
 use crate::syntax::ast::*;
 
@@ -66,16 +65,16 @@ impl Display for Stmt
                 Stmt::Break(None) => String::from("break;"),
                 Stmt::Break(Some(expr)) => format!("break {};", expr),
                 Stmt::Continue => String::from("continue;"),
-                Stmt::While { condition, code } => format!("while ({})\n{}{}", condition, tab, stringify(code, indent + 1, true)),
-                Stmt::Loop { code } => format!("loop\n{}{}", tab, stringify(code, indent + 1, true)),
-                Stmt::For { init, condition, step, code } => format!("for ({}; {}; {})\n{}{}", to_string_if_some(init), to_string_if_some(condition), to_string_if_some(step), tab, stringify(code, indent + 1, true)),
-                Stmt::ForEach { variable, iterable, code } => format!("for {} in {}\n{}{}", variable, iterable, tab, stringify(code, indent + 1, true)),
-                Stmt::If { condition, code, code_else } => format!("if ({})\n{}{}{}", condition, tab, stringify(code, indent + 1, true), match code_else
+                Stmt::While { condition, code } => format!("while ({})\n{}{}", condition, tab, stringify(&code.code(), indent + 1, true)),
+                Stmt::Loop { code } => format!("loop\n{}{}", tab, stringify(&code.code(), indent + 1, true)),
+                Stmt::For { init, condition, step, code } => format!("for ({}; {}; {})\n{}{}", to_string_if_some(init), to_string_if_some(condition), to_string_if_some(step), tab, stringify(&code.code(), indent + 1, true)),
+                Stmt::ForEach { variable, iterable, code } => format!("for {} in {}\n{}{}", variable, iterable, tab, stringify(&code.code(), indent + 1, true)),
+                Stmt::If { condition, code, code_else } => format!("if ({})\n{}{}{}", condition, tab, stringify(&code.code(), indent + 1, true), match code_else
                 {
                     None => String::new(),
-                    Some(code) => format!("\n{}else\n{}{}", tab, tab, stringify(code, indent + 1, true)),
+                    Some(code) => format!("\n{}else\n{}{}", tab, tab, stringify(&code.code(), indent + 1, true)),
                 }),
-                Stmt::DoWhile { code, condition } => format!("do\n{}{}\n{}while ({});", tab, stringify(code, indent + 1, true), tab, condition),
+                Stmt::DoWhile { code, condition } => format!("do\n{}{}\n{}while ({});", tab, stringify(&code.code(), indent + 1, true), tab, condition),
                 Stmt::Impl { type_name, methods } => format!("impl {}\n{}{{\n{}\t{}\n{}}}", type_name, tab, tab, methods.iter().map(|method| method.to_string()).join("\n").replace("\n", &*format!("\n{}\t", tab)), tab),
                 Stmt::FnDecl(decl) => decl.to_string().replace("\n", &*format!("\n{}", tab)),
                 Stmt::Block(stmts) => return format!("{{\n{}\n{}}}", stmts.iter().map(|stmt| format!("{}{}", tab, stringify(stmt, indent + 1, true))).join("\n"), tab),
@@ -275,7 +274,7 @@ impl Display for Expr
             Expr::If(cond, then, els) => write!(f, "if ({}) t {} else {}", cond, then, els),
             Expr::Loop(body) => write!(f, "loop {}", body), // TODO: incorrect indentation
             Expr::Match(expr, arms) => write!(f, "match {} {{ {} }}", expr, arms.iter().map(|a| format!("{} => {}", a.0, a.1)).collect::<Vec<String>>().join(", ")),
-            Expr::StructLiteral(name, fields) => write!(f, "{} {{ {} }}", name, fields.iter().map(Deref::deref).map(Expr::to_string).collect::<Vec<String>>().join(", ")),
+            Expr::StructLiteral(name, fields) => write!(f, "{} {{ {} }}", name, fields.iter().map(|x| x.code().to_string()).collect::<Vec<String>>().join(", ")),
             Expr::StructLiteralNamed(name, fields) => write!(f, "{} {{ {} }}", name, fields.iter().map(|f| format!("{}: {}", f.0, f.1)).collect::<Vec<String>>().join(", ")),
             Expr::BinOp(lhs, op, rhs) => write!(f, "({}{}{})", lhs, op, rhs),
             Expr::Is(lhs, rhs) => write!(f, "({} is {})", lhs, rhs),
