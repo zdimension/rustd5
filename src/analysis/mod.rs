@@ -22,6 +22,9 @@ pub fn analysis(node: Erc<Expr>) -> Result<(), Diagnostic<()>> {
                 node.meta().borrow_mut().type_ = Rc::new(Some(Type::anonymous(TypeKind::Scalar(0))));
             }
         },
+        Expr::SizeOf(ref type_) => {
+
+        },
         _ => {},
     }
     Ok(())
