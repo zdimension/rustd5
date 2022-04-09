@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 const POINTER_BITS: usize = 8;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -5,9 +7,9 @@ pub enum TypeKind
 {
     Void,
     Scalar(u8),
-    Array { target: Box<Type>, length: usize },
-    Pointer { target: Box<Type>, is_global: bool },
-    Composite { fields: Vec<(Variable, Box<Type>)> },
+    Array { target: Rc<Type>, length: usize },
+    Pointer { target: Rc<Type>, is_global: bool },
+    Composite { fields: Vec<(Variable, Rc<Type>)> },
     Generic,
     GenericVariable,
     Alias

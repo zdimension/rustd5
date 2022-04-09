@@ -2,6 +2,8 @@ mod tests;
 mod syntax;
 mod analysis;
 
+use std::fs;
+use std::path::Path;
 use std::rc::Rc;
 use codespan_reporting::diagnostic::{Diagnostic, Label};
 use codespan_reporting::files::SimpleFile;
@@ -13,6 +15,18 @@ use crate::analysis::StackFrame;
 
 
 fn main() -> anyhow::Result<()> {
+    let src = fs::read_to_string(Path::new("examples/calc_rpn.td5")).expect("Unable to read file");
+
+    match syntax::grammar::td5::erc_statement(src.as_str())
+    {
+        Ok(r) => println!("{:?}\n{}", r, r),
+        Err(e) =>
+            {
+                println!("{:?}", e);
+                panic!()
+            }
+    }
+
     let writer = StandardStream::stderr(ColorChoice::Always);
     let config = codespan_reporting::term::Config::default();
     let mut editor = Editor::<()>::new();
@@ -27,7 +41,7 @@ fn main() -> anyhow::Result<()> {
 
         match syntax::grammar::td5::erc_expr(&line) {
             Ok(number) => {
-                match analysis::analysis(number.clone(), &frame) {
+                match analysis::analyze_expr(&number, &frame) {
                     Ok(_) => println!("{}", number),
                     Err(error) => {
                         let file = SimpleFile::new("<repl>", line);

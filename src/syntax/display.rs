@@ -1,3 +1,4 @@
+use std::borrow::Borrow;
 use std::fmt;
 use std::fmt::Display;
 use itertools::Itertools;
@@ -77,7 +78,7 @@ impl Display for Stmt
                 Stmt::DoWhile { code, condition } => format!("do\n{}{}\n{}while ({});", tab, stringify(&code.code(), indent + 1, true), tab, condition),
                 Stmt::Impl { type_name, methods } => format!("impl {}\n{}{{\n{}\t{}\n{}}}", type_name, tab, tab, methods.iter().map(|method| method.to_string()).join("\n").replace("\n", &*format!("\n{}\t", tab)), tab),
                 Stmt::FnDecl(decl) => decl.to_string().replace("\n", &*format!("\n{}", tab)),
-                Stmt::Block(stmts) => return format!("{{\n{}\n{}}}", stmts.iter().map(|stmt| format!("{}{}", tab, stringify(stmt, indent + 1, true))).join("\n"), tab),
+                Stmt::Block(stmts) => return format!("{{\n{}\n{}}}", stmts.iter().map(|stmt| format!("{}{}", tab, stringify(&stmt.code(), indent + 1, true))).join("\n"), tab),
             };
             format!("{}{}", prefix, line)
         }
@@ -270,7 +271,7 @@ impl Display for Expr
             Expr::BitsOf(t) => write!(f, "bitsof({})", t),
             Expr::New(t) => write!(f, "new {}", t),
             Expr::Ident(name) => write!(f, "{}", name),
-            Expr::Compound(stmts, expr) => write!(f, "{{ {} {} }}", stmts.iter().map(|s| format!("{}", s)).collect::<Vec<String>>().join(""), expr),
+            Expr::Compound(stmts, expr) => write!(f, "{{ {} {} }}", stmts.iter().map(|s| format!("{}", s.code())).collect::<Vec<String>>().join(""), expr),
             Expr::If(cond, then, els) => write!(f, "if ({}) t {} else {}", cond, then, els),
             Expr::Loop(body) => write!(f, "loop {}", body), // TODO: incorrect indentation
             Expr::Match(expr, arms) => write!(f, "match {} {{ {} }}", expr, arms.iter().map(|a| format!("{} => {}", a.0, a.1)).collect::<Vec<String>>().join(", ")),

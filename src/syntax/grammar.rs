@@ -8,6 +8,9 @@ parser!
         pub rule erc_expr() -> Erc<Expr>
             = e:erc(<expr()>) { e }
 
+        pub rule erc_statement() -> Erc<Stmt>
+            = _ e:erc(<statement_inner()>) _ { e }
+
         rule expr() -> Expr
             = assign_expr()
 
@@ -16,7 +19,7 @@ parser!
         rule block_comment() = "/*" (!"*/" [_])* "*/"
         rule _ = quiet!{ (whitespace() / line_comment() / block_comment())* }
 
-        rule semi() = _ ";" _
+        rule semi() = _ ";"
         rule comma() = _ "," _
 
         rule escape_char() -> char
@@ -209,9 +212,9 @@ parser!
             / "bitsof" _ "(" _ t:erc(<type_spec()>) _ ")" { Expr::BitsOf(t) }
             / "new" _ "(" _ t:erc(<type_spec()>) _ ")" { Expr::New(t) }
             / "(" _ e:expr() _ ")" { e }
-            / "{" _ s:(statement() ** _) _ e:erc(<expr()>) _ "}" { Expr::Compound(s, e) }
+            / "{" _ s:(erc_statement() ** _) _ e:erc(<expr()>) _ "}" { Expr::Compound(s, e) }
             / "if" _ "(" _ e1:erc(<expr()>) _ ")" _ "{" _ s1:erc(<expr()>) _ "}" _ "else" _ "{" _ s2:erc(<expr()>) _ "}" { Expr::If(e1, s1, s2) }
-            / "loop" _ s:erc(<statement()>) { Expr::Loop(s) }
+            / "loop" _ s:erc_statement() { Expr::Loop(s) }
             / "match" _ "(" _ e:erc(<expr()>) _ ")" _ "{" _ arms:(match_arm() ** comma()) _ "}" { Expr::Match(e, arms) }
             / t:erc(<type_spec_named()>) _ "{" _ fields:(erc(<expr()>) ** comma()) _ "}" { Expr::StructLiteral(t, fields) }
             / t:erc(<type_spec_named()>) _ "{" _ fields:(named_literal_field() ** comma()) _ "}" { Expr::StructLiteralNamed(t, fields) }
@@ -239,25 +242,22 @@ parser!
             = signature:func_prototype() code:block() { FnDecl { signature, code } }
 
         rule block() -> Stmt
-            = _ "{" _ s:(statement() ** _) _ "}" _ { Stmt::Block(s) }
+            = _ "{" _ s:(erc_statement() ** _) _ "}" _ { Stmt::Block(s) }
 
         rule var_decl_stmt() -> VarDeclStmt
-            = "var" _ vars:(var_decl() ** comma()) { VarDeclStmt(vars) }
+            = "var" _ vars:(erc(<var_decl()>) ** comma()) { VarDeclStmt(vars) }
 
         rule decl_or_expr() -> DeclOrExpr
             = v:erc(<var_decl_stmt()>) { DeclOrExpr::Decl(v) }
             / e:erc(<expr()>) { DeclOrExpr::Expr(e) }
-
-        pub rule statement() -> Stmt
-            = _ s:statement_inner() _ { s }
 
         rule statement_inner() -> Stmt
             = ";" { Stmt::Empty }
             / "(" _ names:(ident() ++ comma()) _ ")" _ "=" _ "(" _ values:(erc(<expr()>) ++ comma()) _ ")" _ ";" { Stmt::TupleAssign { names, values } }
             / f:erc(<func_decl()>) { Stmt::FnDecl(f) }
             / "impl" _ i:ident() _ "{" _ methods:(func_decl() ** _) _ "}" { Stmt::Impl { type_name: i.to_string(), methods } }
-            / "if" _ "(" _ condition:erc(<expr()>) _ ")" code:erc(<statement()>) !"else" { Stmt::If { condition, code, code_else: None } }
-            / "if" _ "(" _ condition:erc(<expr()>) _ ")" code:erc(<statement()>) "else" code_else:erc(<statement()>) { Stmt::If { condition, code, code_else: Some(code_else) } }
+            / "if" _ "(" _ condition:erc(<expr()>) _ ")" code:erc_statement() !"else" { Stmt::If { condition, code, code_else: None } }
+            / "if" _ "(" _ condition:erc(<expr()>) _ ")" code:erc_statement() "else" code_else:erc_statement() { Stmt::If { condition, code, code_else: Some(code_else) } }
             / "const" _ i:ident() _ "=" _ value:erc(<expr()>) semi() { Stmt::ConstDecl { name: i.to_string(), value } }
             / s:var_decl_stmt() semi() { Stmt::VarDeclList(s) }
             / "type" _ types:(type_decl() ** comma()) semi() { Stmt::TypeDeclList(types) }
@@ -267,11 +267,11 @@ parser!
             / "assert" _ e:erc(<expr()>) semi() { Stmt::Assert(e) }
             / "print" _ e:erc(<expr()>) semi() { Stmt::Print(e) }
             / "continue" semi() { Stmt::Continue }
-            / "while" _ "(" _ condition:erc(<expr()>) _ ")" _ code:erc(<statement()>) { Stmt::While { condition, code } }
-            / "do" _ code:erc(<statement()>) _ "while" _ "(" _ condition:erc(<expr()>) _ ")" semi() { Stmt::DoWhile { condition, code } }
-            / "loop" _ code:erc(<statement()>) { Stmt::Loop { code } }
-            / "for" _ "(" _ "var" _ i:ident() _ "in" _ iterable:erc(<expr()>) _ ")" _ code:erc(<statement()>) { Stmt::ForEach { variable: i.to_string(), iterable, code } }
-            / "for" _ "(" _ init:decl_or_expr()? semi() condition:erc(<expr()>)? semi() step:erc(<expr()>)? _ ")" _ code:erc(<statement()>) { Stmt::For{init, condition, step, code} }
+            / "while" _ "(" _ condition:erc(<expr()>) _ ")" _ code:erc_statement() { Stmt::While { condition, code } }
+            / "do" _ code:erc_statement() _ "while" _ "(" _ condition:erc(<expr()>) _ ")" semi() { Stmt::DoWhile { condition, code } }
+            / "loop" _ code:erc_statement() { Stmt::Loop { code } }
+            / "for" _ "(" _ "var" _ i:ident() _ "in" _ iterable:erc(<expr()>) _ ")" _ code:erc_statement() { Stmt::ForEach { variable: i.to_string(), iterable, code } }
+            / "for" _ "(" _ init:decl_or_expr()? semi() condition:erc(<expr()>)? semi() step:erc(<expr()>)? _ ")" _ code:erc_statement() { Stmt::For{init, condition, step, code} }
             / e:erc(<expr()>) semi() { Stmt::Discard(e) }
 
     }

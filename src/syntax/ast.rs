@@ -2,12 +2,15 @@ extern crate derive_more;
 extern crate peg;
 
 use std::borrow::{Borrow};
-use std::cell::{Ref, RefCell, RefMut};
+use std::cell::{RefCell, RefMut};
 use std::fmt::{Debug, Display};
 use std::ops::{Deref, Range};
 use std::rc::Rc;
+use codespan_reporting::diagnostic::{Diagnostic, Label};
 use derive_more::Constructor;
-use crate::analysis::typing::Type;
+use crate::analysis::analyze_expr;
+use crate::analysis::typing::{Type, TypeKind};
+use crate::StackFrame;
 
 #[derive(Debug, Clone)]
 pub struct NodeReal<T> {
@@ -25,17 +28,52 @@ pub struct NodeMetadata
 {
     pub start: usize,
     pub end: usize,
-    pub type_: Rc<Option<Type>>,
+    pub type_: Option<Rc<Type>>,
 }
 
-impl <T: Clone> Erc<T>
+impl Erc<Expr>
+{
+    pub fn get_type(&self, frame: &Rc<StackFrame>) -> Result<Rc<Type>, Diagnostic<()>> {
+        if let Some(t) = self.meta().type_ {
+            Ok(t)
+        } else {
+            analyze_expr(&self, &frame)?;
+            self.meta().type_.ok_or_else(|| {
+                Diagnostic::error()
+                    .with_message("unable to analyze type")
+                    .with_labels(vec![
+                        Label::primary((), self.range())
+                    ])
+            })
+        }
+    }
+
+    pub fn expect_non_void(&self, frame: &Rc<StackFrame>) -> Result<(), Diagnostic<()>> {
+        let t = self.get_type(frame)?;
+        if t.kind == TypeKind::Void {
+            Err(Diagnostic::error()
+                .with_message("void type not allowed")
+                .with_labels(vec![
+                    Label::primary((), self.range())
+                ])
+            )
+        } else {
+            Ok(())
+        }
+    }
+
+}
+
+impl<T: Clone> Erc<T>
 {
     pub fn new(expr: T, start: usize, end: usize) -> Self
     {
-        Self { expr: Rc::new(RefCell::new(NodeReal {
-            node: expr,
-            meta: NodeMetadata { start, end, type_: Rc::new(None) }
-        })) }
+        Self {
+            expr: Rc::new(RefCell::new(NodeReal {
+                node: expr,
+                meta: NodeMetadata { start, end, type_: None },
+            }))
+        }
     }
 
     pub fn meta(&self) -> NodeMetadata
@@ -50,7 +88,7 @@ impl <T: Clone> Erc<T>
 
     pub fn set_type(&self, type_: Type)
     {
-        self.expr.deref().borrow_mut().meta.type_ = Rc::new(Some(type_));
+        self.expr.deref().borrow_mut().meta.type_ = Some(Rc::new(type_));
     }
 
     pub fn range(&self) -> Range<usize>
@@ -64,16 +102,11 @@ impl <T: Clone> Erc<T>
     {
         self.expr.deref().borrow_mut()
     }
-
-    pub fn borrow(&self) -> Ref<'_, NodeReal<T>>
-    {
-        self.expr.deref().borrow()
-    }
 }
 
-impl <T> Clone for Erc<T>
-where
-    T: Clone
+impl<T> Clone for Erc<T>
+    where
+        T: Clone
 {
     fn clone(&self) -> Self
     {
@@ -81,7 +114,7 @@ where
     }
 }
 
-impl <T> AsRef<RefCell<NodeReal<T>>> for Erc<T>
+impl<T> AsRef<RefCell<NodeReal<T>>> for Erc<T>
 {
     fn as_ref(&self) -> &RefCell<NodeReal<T>>
     {
@@ -89,9 +122,9 @@ impl <T> AsRef<RefCell<NodeReal<T>>> for Erc<T>
     }
 }
 
-impl <T> Display for Erc<T>
-where
-    T: Display
+impl<T> Display for Erc<T>
+    where
+        T: Display
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result
     {
@@ -99,7 +132,7 @@ where
     }
 }
 
-impl <T> Deref for Erc<T>
+impl<T> Deref for Erc<T>
 {
     type Target = RefCell<NodeReal<T>>;
 
@@ -109,9 +142,9 @@ impl <T> Deref for Erc<T>
     }
 }
 
-impl <T> Debug for Erc<T>
-where
-    T: Debug
+impl<T> Debug for Erc<T>
+    where
+        T: Debug
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result
     {
@@ -119,7 +152,7 @@ where
     }
 }
 
-impl <T: PartialEq> PartialEq for Erc<T>
+impl<T: PartialEq> PartialEq for Erc<T>
 {
     fn eq(&self, other: &Self) -> bool
     {
@@ -127,12 +160,11 @@ impl <T: PartialEq> PartialEq for Erc<T>
     }
 }
 
-impl <T: Eq> Eq for Erc<T>
-{
-}
+impl<T: Eq> Eq for Erc<T>
+{}
 
 #[derive(Clone, PartialEq, Eq, Debug)]
-pub struct VarDeclStmt(pub Vec<VarDecl>);
+pub struct VarDeclStmt(pub Vec<Erc<VarDecl>>);
 
 /// Variable declaration or expression
 ///
@@ -141,7 +173,7 @@ pub struct VarDeclStmt(pub Vec<VarDecl>);
 pub enum DeclOrExpr
 {
     Decl(Erc<VarDeclStmt>),
-    Expr(Erc<Expr>)
+    Expr(Erc<Expr>),
 }
 
 /// Statement
@@ -276,7 +308,7 @@ pub enum Stmt
     ///     bar();
     /// }
     /// ```
-    Block(Vec<Stmt>),
+    Block(Vec<Erc<Stmt>>),
 }
 
 /// Function signature
@@ -532,7 +564,7 @@ pub enum Expr
     /// ```
     /// var x = { var v = foo(); v + 1 };
     /// ```
-    Compound(Vec<Stmt>, Erc<Expr>),
+    Compound(Vec<Erc<Stmt>>, Erc<Expr>),
     /// Conditional expression
     /// ```
     /// var x = if (foo()) { 1 } else { 2 };
@@ -588,7 +620,7 @@ pub enum Expr
     /// Internal expression type, used for storing type specs in expression contexts
     Type(Erc<TypeSpec>),
     /// Internal expression type, used for storing patterns in expression contexts
-    Pattern(Erc<Pattern>)
+    Pattern(Erc<Pattern>),
 }
 
 /// Typed variable declaration
